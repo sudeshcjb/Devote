@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Transaction } from '../types';
-import { FileText, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, Hash, User, Info } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Clock, ChevronDown, ChevronRight, Hash, User, Info, FileSignature, ShieldCheck } from 'lucide-react';
+import { Button } from './Button';
 
 interface TransactionLogProps {
   transactions: Transaction[];
+  onVerifySignature?: (address: string, message: string, signature: string) => void;
 }
 
-export const TransactionLog: React.FC<TransactionLogProps> = ({ transactions }) => {
+export const TransactionLog: React.FC<TransactionLogProps> = ({ transactions, onVerifySignature }) => {
   const [expandedTx, setExpandedTx] = useState<string | null>(null);
 
   if (transactions.length === 0) return null;
@@ -108,6 +110,31 @@ export const TransactionLog: React.FC<TransactionLogProps> = ({ transactions }) 
                                     }`}>
                                         {tx.details}
                                     </span>
+                                </div>
+                            )}
+
+                            {tx.signature && tx.signedMessage && (
+                                <div className="mt-2 bg-dark-900/50 p-3 rounded border border-dark-700/50">
+                                    <div className="flex items-center gap-2 text-slate-400 text-xs mb-2">
+                                        <FileSignature size={12} />
+                                        <span className="font-semibold uppercase tracking-wider">Cryptographic Signature</span>
+                                    </div>
+                                    <div className="font-mono text-[10px] text-slate-500 break-all bg-dark-900 p-2 rounded mb-2 border border-dark-700">
+                                        {tx.signature}
+                                    </div>
+                                    {onVerifySignature && (
+                                        <Button 
+                                            size="sm" 
+                                            variant="secondary" 
+                                            className="w-full text-xs h-7"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onVerifySignature(tx.from, tx.signedMessage!, tx.signature!);
+                                            }}
+                                        >
+                                            <ShieldCheck size={12} className="mr-1.5" /> Verify Origin
+                                        </Button>
+                                    )}
                                 </div>
                             )}
                         </div>

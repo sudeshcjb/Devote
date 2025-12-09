@@ -35,4 +35,6 @@ export interface Transaction {
   blockNumber: number;
   details?: string;
   proofData?: MerkleProof; // Verification data
+  signature?: string;
+  signedMessage?: string;
 }

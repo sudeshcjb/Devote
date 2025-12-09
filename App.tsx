@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { WalletState, Candidate, Transaction } from './types';
 import { INITIAL_CANDIDATES } from './constants';
-import { connectWalletMock, castVoteMock, getCandidatesMock, resetElectionMock, checkHasVoted, getMerkleRootMock, tamperVoteDataMock } from './services/mockBlockchain';
+import { connectWalletMock, castVoteMock, getCandidatesMock, resetElectionMock, checkHasVoted, getMerkleRootMock, tamperVoteDataMock, addCandidateMock, getSignatureForVote, verifySignatureMock } from './services/mockBlockchain';
 import { analyzeElection } from './services/geminiService';
 import { CandidateCard } from './components/CandidateCard';
 import { ResultsChart } from './components/ResultsChart';
@@ -72,7 +72,7 @@ const App: React.FC = () => {
     setTimeLeft(diff <= 0 ? "Ended" : `${Math.floor(diff / (1000 * 60 * 60))}h`);
   }, [electionEndDate]);
 
-  const addTransaction = (method: string, from: string, status: 'Success' | 'Failed', details?: string, proofData?: any) => {
+  const addTransaction = (method: string, from: string, status: 'Success' | 'Failed', details?: string, proofData?: any, signatureData?: { signature: string, signedMessage: string }) => {
       const newTx: Transaction = {
           hash: "0x" + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
           method,
@@ -81,7 +81,9 @@ const App: React.FC = () => {
           timestamp: Date.now(),
           blockNumber: currentBlock + 1,
           details,
-          proofData
+          proofData,
+          signature: signatureData?.signature,
+          signedMessage: signatureData?.signedMessage
       };
       setTransactions(prev => [...prev, newTx]);
       setCurrentBlock(prev => prev + 1);
@@ -134,6 +136,8 @@ const App: React.FC = () => {
     setIsVoting(candidateId);
     try {
       const { txHash, proof } = await castVoteMock(candidateId, wallet.address!);
+      const { signature, signedMessage } = getSignatureForVote(wallet.address!, candidateId);
+
       const updatedCandidates = await getCandidatesMock();
       setCandidates(updatedCandidates);
       setWallet(prev => ({ ...prev, hasVoted: true }));
@@ -142,18 +146,7 @@ const App: React.FC = () => {
       showNotification("Vote cast successfully on-chain!", "success");
       
       // Add to audit log
-      const newTx: Transaction = {
-          hash: txHash,
-          method: "Vote",
-          from: wallet.address!,
-          status: "Success",
-          timestamp: Date.now(),
-          blockNumber: currentBlock + 1,
-          details: `Candidate ID: ${candidateId}`,
-          proofData: proof
-      };
-      setTransactions(prev => [...prev, newTx]);
-      setCurrentBlock(prev => prev + 1);
+      addTransaction("Vote", wallet.address!, "Success", `Candidate ID: ${candidateId}`, proof, { signature, signedMessage });
 
       setAiAnalysis(""); 
     } catch (error: any) {
@@ -169,6 +162,16 @@ const App: React.FC = () => {
     const analysis = await analyzeElection(candidates);
     setAiAnalysis(analysis);
     setIsAnalyzing(false);
+  };
+
+  const handleVerifySignature = async (address: string, message: string, signature: string) => {
+      showNotification("Verifying Signature...", "success");
+      const isValid = await verifySignatureMock(address, message, signature);
+      if (isValid) {
+          showNotification("Signature VALID. Identity confirmed.", "success");
+      } else {
+          showNotification("Signature INVALID. Potential forgery.", "error");
+      }
   };
 
   // --- Admin / Validation Handlers ---
@@ -235,6 +238,28 @@ const App: React.FC = () => {
      } finally {
        setIsVoting(null);
      }
+  };
+
+  const handleAddCandidate = async (name: string, party: string, manifesto: string, imageUrl?: string) => {
+    try {
+      const txHash = await addCandidateMock(name, party, manifesto, imageUrl);
+      setCandidates(await getCandidatesMock());
+      showNotification("New candidate added successfully!", "success");
+      
+      const newTx: Transaction = {
+        hash: txHash,
+        method: "AddCandidate",
+        from: "0xAdmin...Host",
+        status: "Success",
+        timestamp: Date.now(),
+        blockNumber: currentBlock + 1,
+        details: `Added ${name}`
+      };
+      setTransactions(prev => [...prev, newTx]);
+      setCurrentBlock(prev => prev + 1);
+    } catch (error) {
+      showNotification("Failed to add candidate.", "error");
+    }
   };
 
   const sortedCandidates = [...candidates].sort((a, b) => {
@@ -313,6 +338,7 @@ const App: React.FC = () => {
             onReset={handleAdminReset}
             onForceError={handleForceError}
             onTamper={handleTamper}
+            onAddCandidate={handleAddCandidate}
             electionStatus={timeLeft === 'Ended' ? 'ended' : 'active'}
             isLoading={isVoting !== null && isVoting === 999}
         />
@@ -414,6 +440,7 @@ const App: React.FC = () => {
                   key={candidate.id}
                   candidate={candidate}
                   onVote={handleVote}
+                  onVerifySignature={wallet.hasVoted && wallet.isConnected ? (msg, sig) => handleVerifySignature(wallet.address!, msg, sig) : undefined}
                   isVoting={isVoting === candidate.id}
                   isConnected={wallet.isConnected}
                   hasVoted={wallet.hasVoted}
@@ -430,18 +457,10 @@ const App: React.FC = () => {
                         <span className="text-xs text-slate-500 italic">Click a Vote transaction to verify proof</span>
                     )}
                 </div>
-                <TransactionLog transactions={transactions} />
-                <div className="mt-2 grid grid-cols-2 md:grid-cols-4 gap-2">
-                    {transactions.filter(t => t.proofData).map(t => (
-                        <button 
-                            key={t.hash} 
-                            onClick={() => setVerifyTx(t)}
-                            className="bg-dark-800 hover:bg-dark-700 border border-dark-600 text-left p-2 rounded text-xs text-brand-400 flex items-center gap-2 transition-colors"
-                        >
-                            <ShieldCheck size={12} /> Verify {t.hash.substring(0, 6)}...
-                        </button>
-                    ))}
-                </div>
+                <TransactionLog 
+                  transactions={transactions} 
+                  onVerifySignature={handleVerifySignature}
+                />
             </div>
             
             <SolidityViewer />

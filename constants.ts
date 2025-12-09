@@ -7,6 +7,8 @@ contract Voting {
     struct Candidate {
         uint id;
         string name;
+        string party;
+        string manifesto;
         uint voteCount;
     }
 
@@ -21,6 +23,7 @@ contract Voting {
 
     event VoteCast(address indexed voter, uint indexed candidateId);
     event ElectionPeriodSet(uint startDate, uint endDate);
+    event CandidateAdded(uint id, string name, string party);
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Caller is not the admin");
@@ -36,14 +39,13 @@ contract Voting {
 
     constructor(string[] memory _candidateNames) {
         admin = msg.sender;
-        for (uint i = 0; i < _candidateNames.length; i++) {
-            addCandidate(_candidateNames[i]);
-        }
+        // Initial setup
     }
 
-    function addCandidate(string memory _name) private {
+    function addCandidate(string memory _name, string memory _party, string memory _manifesto) public onlyAdmin {
         candidatesCount++;
-        candidates[candidatesCount] = Candidate(candidatesCount, _name, 0);
+        candidates[candidatesCount] = Candidate(candidatesCount, _name, _party, _manifesto, 0);
+        emit CandidateAdded(candidatesCount, _name, _party);
     }
 
     function setElectionPeriod(uint _startDate, uint _endDate) public onlyAdmin {
