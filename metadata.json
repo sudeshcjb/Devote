@@ -1,0 +1,5 @@
+{
+  "name": "Decentralized Voting Simulator T1U1",
+  "description": "A React-based simulation of a decentralized voting DApp. Includes a mock blockchain layer, candidate visualization, and an AI-powered election analyst using the Gemini API.",
+  "requestFramePermissions": []
+}
